@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const createAccount = `-- name: CreateAccount :exec
+const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (owner, balance, currency)
 VALUES ($1, $2, $3)
 RETURNING id, owner, balance, currency, created_at
@@ -21,9 +21,34 @@ type CreateAccountParams struct {
 	Currency string `json:"currency"`
 }
 
-func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) error {
-	_, err := q.db.ExecContext(ctx, createAccount, arg.Owner, arg.Balance, arg.Currency)
-	return err
+func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, createAccount, arg.Owner, arg.Balance, arg.Currency)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Owner,
+		&i.Balance,
+		&i.Currency,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteAccountByOwner = `-- name: DeleteAccountByOwner :one
+DELETE FROM accounts WHERE owner = $1 RETURNING id, owner, balance, currency, created_at
+`
+
+func (q *Queries) DeleteAccountByOwner(ctx context.Context, owner string) (Account, error) {
+	row := q.db.QueryRowContext(ctx, deleteAccountByOwner, owner)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Owner,
+		&i.Balance,
+		&i.Currency,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
@@ -32,6 +57,111 @@ SELECT id, owner, balance, currency, created_at FROM accounts WHERE id = $1
 
 func (q *Queries) GetAccountByID(ctx context.Context, id int64) (Account, error) {
 	row := q.db.QueryRowContext(ctx, getAccountByID, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Owner,
+		&i.Balance,
+		&i.Currency,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAccountByOwner = `-- name: GetAccountByOwner :one
+SELECT id, owner, balance, currency, created_at FROM accounts WHERE owner = $1
+`
+
+func (q *Queries) GetAccountByOwner(ctx context.Context, owner string) (Account, error) {
+	row := q.db.QueryRowContext(ctx, getAccountByOwner, owner)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Owner,
+		&i.Balance,
+		&i.Currency,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAccountWithBalanceLowerThan = `-- name: GetAccountWithBalanceLowerThan :many
+SELECT id, owner, balance, currency, created_at FROM accounts WHERE balance < $1
+`
+
+func (q *Queries) GetAccountWithBalanceLowerThan(ctx context.Context, balance int64) ([]Account, error) {
+	rows, err := q.db.QueryContext(ctx, getAccountWithBalanceLowerThan, balance)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Account
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Owner,
+			&i.Balance,
+			&i.Currency,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAccounts = `-- name: GetAccounts :many
+SELECT id, owner, balance, currency, created_at FROM accounts
+`
+
+func (q *Queries) GetAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := q.db.QueryContext(ctx, getAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Account
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Owner,
+			&i.Balance,
+			&i.Currency,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateAccountBalance = `-- name: UpdateAccountBalance :one
+UPDATE accounts SET balance = $1 WHERE id = $2 RETURNING id, owner, balance, currency, created_at
+`
+
+type UpdateAccountBalanceParams struct {
+	Balance int64 `json:"balance"`
+	ID      int64 `json:"id"`
+}
+
+func (q *Queries) UpdateAccountBalance(ctx context.Context, arg UpdateAccountBalanceParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, updateAccountBalance, arg.Balance, arg.ID)
 	var i Account
 	err := row.Scan(
 		&i.ID,
